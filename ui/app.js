@@ -534,13 +534,15 @@ function handleHostMessage(m) {
       }
 
       case 'licenseStatus': {
+        const wasLicensed = state.licensed;
         state.licensed = !!m.payload.licensed;
         state.license = m.payload;
         const badge = $('#license-badge');
         badge.textContent = state.licensed ? 'PRO' : 'UNLICENSED';
         badge.className = 'badge ' + (state.licensed ? 'pro' : 'trial');
         $('#machine-id').textContent = m.payload.machineId ? 'Machine ID: ' + m.payload.machineId : '';
-        if (state.view === 'license') render();
+        // Only re-render if licensed state changed (avoids wiping form fields mid-typing)
+        if (state.view === 'license' && wasLicensed !== state.licensed) render();
         break;
       }
 

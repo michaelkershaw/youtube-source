@@ -46,6 +46,9 @@ extern "C" BOOL WINAPI DllMain(HINSTANCE hinstDLL, DWORD fdwReason, LPVOID lpvRe
 #define localtime_s(tmptr, timeptr) localtime_r(timeptr, tmptr)
 #define sprintf_s(buf, ...) snprintf(buf, sizeof(buf), __VA_ARGS__)
 #define Sleep(ms) std::this_thread::sleep_for(std::chrono::milliseconds(ms))
+#ifndef E_POINTER
+#define E_POINTER ((HRESULT)0x80004003L)
+#endif
 #endif
 
 // Open a URL in the default browser (cross-platform)
@@ -685,10 +688,17 @@ void CYouTubeSource::OpenWebUI()
         pWebHost->SetMessageHandler([this](const std::string& type, const std::string& payload) {
             HandleWebMessage(type, payload);
         });
+#ifdef _WIN32
     } else if (pWebHost->GetHWND()) {
         pWebHost->BringToFront();
         return;
     }
+#else
+    } else if (pWebHost->IsVisible()) {
+        pWebHost->BringToFront();
+        return;
+    }
+#endif
     
     if (WebHostThread.joinable()) WebHostThread.join();
     
@@ -1300,6 +1310,7 @@ void CYouTubeSource::ShowSearchWindow()
         }
     });
 }
+#endif // _WIN32 (ShowSearchWindow)
 
 void CYouTubeSource::StreamTrackFromSearch(const SearchResult& result, int deck)
 {
@@ -1312,7 +1323,9 @@ void CYouTubeSource::StreamTrackFromSearch(const SearchResult& result, int deck)
         default: target = "Deck A"; break;
     }
     LogInfo("StreamTrackFromSearch: " + result.title + " -> " + target);
+#ifdef _WIN32
     if (pSearchDialog) pSearchDialog->SetStatusText("Getting stream URL: " + result.title);
+#endif
 
     // Extract video ID
     std::string videoId = result.videoId;
@@ -1336,7 +1349,9 @@ void CYouTubeSource::StreamTrackFromSearch(const SearchResult& result, int deck)
 
     if (directUrl.empty()) {
         LogWarning("StreamTrackFromSearch: no direct URL, falling back to download");
+#ifdef _WIN32
         if (pSearchDialog) pSearchDialog->SetStatusText("Streaming failed, downloading instead...");
+#endif
         LoadTrackFromSearch(result, deck);
         return;
     }
@@ -1361,12 +1376,16 @@ void CYouTubeSource::StreamTrackFromSearch(const SearchResult& result, int deck)
 
     if (FAILED(hr)) {
         LogWarning("StreamTrackFromSearch: SendCommand failed, falling back to download");
+#ifdef _WIN32
         if (pSearchDialog) pSearchDialog->SetStatusText("Stream failed, downloading instead...");
+#endif
         LoadTrackFromSearch(result, deck);
         return;
     }
 
+#ifdef _WIN32
     if (pSearchDialog) pSearchDialog->SetStatusText("Streaming: " + result.title);
+#endif
 }
 
 void CYouTubeSource::LoadTrackFromSearch(const SearchResult& result, int deck)
@@ -1381,7 +1400,9 @@ void CYouTubeSource::LoadTrackFromSearch(const SearchResult& result, int deck)
     }
     LogInfo("Loading track from search dialog: " + result.title + " to " + target);
     
+#ifdef _WIN32
     if (pSearchDialog) pSearchDialog->SetStatusText("Downloading: " + result.title);
+#endif
     
     // Extract video ID from URL
     std::string videoId;
@@ -1407,7 +1428,9 @@ void CYouTubeSource::LoadTrackFromSearch(const SearchResult& result, int deck)
     
     if (cachedFile.empty()) {
         LogError("LoadTrackFromSearch: DownloadAndCacheTrack returned empty path for videoId=" + videoId);
+#ifdef _WIN32
         if (pSearchDialog) pSearchDialog->SetStatusText("Download failed!");
+#endif
         return;
     }
     
@@ -1423,7 +1446,9 @@ void CYouTubeSource::LoadTrackFromSearch(const SearchResult& result, int deck)
     
     if (!fileExists || fileSize == 0) {
         LogError("LoadTrackFromSearch: file missing or empty after download!");
+#ifdef _WIN32
         if (pSearchDialog) pSearchDialog->SetStatusText("Error: file not found after download");
+#endif
         return;
     }
     
@@ -1465,14 +1490,17 @@ void CYouTubeSource::LoadTrackFromSearch(const SearchResult& result, int deck)
         
         if (FAILED(hr2)) {
             LogError("Both commands failed. File: [" + cachedFile + "] Deck: " + target);
+#ifdef _WIN32
             if (pSearchDialog) pSearchDialog->SetStatusText("Load failed - see log for details");
+#endif
             return;
         }
     }
     
+#ifdef _WIN32
     if (pSearchDialog) pSearchDialog->SetStatusText("Loaded: " + result.title);
+#endif
 }
-#endif  // _WIN32 (legacy search dialog)
 
 //////////////////////////////////////////////////////////////////////////
 // Command execution
@@ -2951,8 +2979,13 @@ std::string CYouTubeSource::EncryptPassword(const std::string& plain)
 
 extern "C" VDJ_EXPORT HRESULT VDJ_API DllGetClassObject(const GUID &rclsid, const GUID &riid, void** ppObject)
 {
+#ifdef _WIN32
     if (rclsid == CLSID_VdjPlugin8) {
         if (riid == IID_IVdjPluginOnlineSource) {
+#else
+    if (memcmp(&rclsid, &CLSID_VdjPlugin8, sizeof(GUID)) == 0) {
+        if (memcmp(&riid, &IID_IVdjPluginOnlineSource, sizeof(GUID)) == 0) {
+#endif
             *ppObject = new CYouTubeSource();
             return S_OK;
         }

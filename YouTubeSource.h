@@ -27,6 +27,18 @@ enum LogLevel {
     LOG_ERROR = 3
 };
 
+#ifndef _WIN32
+struct SearchResult {
+    std::string title;
+    std::string duration;
+    std::string channel;
+    std::string videoId;
+    std::string url;
+    bool cachedMp3 = false;
+    bool cachedMp4 = false;
+};
+#endif
+
 class CYouTubeSource : public IVdjPluginOnlineSource
 {
 public:
@@ -100,6 +112,9 @@ private:
     void HandleWebMessage(const std::string& type, const std::string& payloadJson);
     void PushLicenseToWeb();
     void PushTracksToWeb(const char* msgType, const std::vector<VideoInfo>& tracks);
+    void OpenSearchWindow();
+    void LoadTrackFromSearch(const SearchResult& result, int deck);
+    void StreamTrackFromSearch(const SearchResult& result, int deck);
 
     // Phase 3: playlists / trending / charts / history
     std::vector<VideoInfo> FetchPlaylist(const std::string& url, int limit = 200);
@@ -129,9 +144,6 @@ private:
     SearchDialog* pSearchDialog = nullptr;
     std::thread SearchWindowThread;
     void ShowSearchWindow();
-    void LoadTrackFromSearch(const SearchResult& result, int deck);
-    void StreamTrackFromSearch(const SearchResult& result, int deck);
-    void OpenSearchWindow();
     
     // Plugin bitmap (logo)
     HBITMAP hPluginBitmap = nullptr;

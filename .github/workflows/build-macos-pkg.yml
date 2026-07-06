@@ -57,16 +57,33 @@ jobs:
           cat > "$STAGING/install.sh" << 'SCRIPT'
           #!/bin/bash
           set -e
-          PLUGDIR="$HOME/Documents/VirtualDJ/Plugins64/OnlineSources"
-          mkdir -p "$PLUGDIR/youtube-source/ui"
-          cp -R YouTubeSource.bundle "$PLUGDIR/"
-          cp -R youtube-source/ui/* "$PLUGDIR/youtube-source/ui/"
-          cp youtube-source/yt-dlp "$PLUGDIR/youtube-source/yt-dlp"
-          cp youtube-source/ffmpeg "$PLUGDIR/youtube-source/ffmpeg"
-          chmod +x "$PLUGDIR/youtube-source/yt-dlp" "$PLUGDIR/youtube-source/ffmpeg"
-          xattr -d com.apple.quarantine "$PLUGDIR/youtube-source/yt-dlp" 2>/dev/null || true
-          xattr -d com.apple.quarantine "$PLUGDIR/youtube-source/ffmpeg" 2>/dev/null || true
-          echo "Installed to $PLUGDIR"
+          cd "$(dirname "$0")"
+          VDJ="$HOME/Library/Application Support/VirtualDJ"
+
+          # Install to both folders: PluginsMacArm (Apple Silicon native VDJ)
+          # and Plugins64 (Intel / Rosetta VDJ)
+          for SUB in PluginsMacArm Plugins64; do
+              PLUGDIR="$VDJ/$SUB/OnlineSources"
+              mkdir -p "$PLUGDIR/youtube-source/ui"
+              rm -rf "$PLUGDIR/YouTubeSource.bundle"
+              cp -R YouTubeSource.bundle "$PLUGDIR/"
+              cp -R youtube-source/ui/* "$PLUGDIR/youtube-source/ui/"
+              cp youtube-source/yt-dlp "$PLUGDIR/youtube-source/yt-dlp"
+              cp youtube-source/ffmpeg "$PLUGDIR/youtube-source/ffmpeg"
+              chmod +x "$PLUGDIR/youtube-source/yt-dlp" "$PLUGDIR/youtube-source/ffmpeg"
+              # Remove quarantine from EVERYTHING (bundle included) or Gatekeeper
+              # silently blocks the unsigned plugin from loading
+              xattr -dr com.apple.quarantine "$PLUGDIR" 2>/dev/null || true
+              echo "Installed to $PLUGDIR"
+          done
+
+          # Ad-hoc sign the bundles so Apple Silicon will load them
+          for SUB in PluginsMacArm Plugins64; do
+              codesign --force --deep -s - "$VDJ/$SUB/OnlineSources/YouTubeSource.bundle" 2>/dev/null || true
+          done
+
+          echo ""
+          echo "Done. Restart VirtualDJ - YouTube Source appears under Online Sources."
           SCRIPT
           chmod +x "$STAGING/install.sh"
           

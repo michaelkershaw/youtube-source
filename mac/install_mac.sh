@@ -8,8 +8,13 @@ echo "========================================"
 echo " YouTube Source Plugin - macOS Install"
 echo "========================================"
 
-# VirtualDJ plugins live in the user's Documents folder
-PLUGDIR="$HOME/Documents/VirtualDJ/Plugins64/OnlineSources"
+# VirtualDJ plugin folders (PluginsMacArm = Apple Silicon native, Plugins64 = Intel)
+VDJ="$HOME/Library/Application Support/VirtualDJ"
+if [[ "$(uname -m)" == "arm64" ]]; then
+    PLUGDIR="$VDJ/PluginsMacArm/OnlineSources"
+else
+    PLUGDIR="$VDJ/Plugins64/OnlineSources"
+fi
 
 BUNDLE="build/YouTubeSource.bundle"
 if [ ! -d "$BUNDLE" ]; then
@@ -47,6 +52,10 @@ if command -v ffmpeg > /dev/null; then
     cp "$(which ffmpeg)" "$PLUGDIR/youtube-source/ffmpeg"
     echo "ffmpeg copied from Homebrew installation."
 fi
+
+# Remove quarantine and ad-hoc sign so Gatekeeper doesn't block the plugin
+xattr -dr com.apple.quarantine "$PLUGDIR" 2>/dev/null || true
+codesign --force --deep -s - "$PLUGDIR/YouTubeSource.bundle" 2>/dev/null || true
 
 echo "========================================"
 echo " SUCCESS! Installed to:"

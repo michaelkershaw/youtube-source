@@ -31,3 +31,5 @@ yt-dlp_macos
 
 # Logs
 *.log
+
+mac-output/

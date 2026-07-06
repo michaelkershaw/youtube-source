@@ -1694,7 +1694,16 @@ std::string CYouTubeSource::GetModuleDirectory()
     Dl_info info;
     if (dladdr((void*)&OpenUrlInBrowser, &info) && info.dli_fname) {
         std::filesystem::path p(info.dli_fname);
-        return p.parent_path().string();
+        std::filesystem::path dir = p.parent_path();
+        // If we're inside a .bundle (…/YouTubeSource.bundle/Contents/MacOS),
+        // return the folder CONTAINING the bundle, where youtube-source/ui
+        // and the tools are installed.
+        if (dir.filename() == "MacOS" &&
+            dir.parent_path().filename() == "Contents" &&
+            dir.parent_path().parent_path().extension() == ".bundle") {
+            return dir.parent_path().parent_path().parent_path().string();
+        }
+        return dir.string();
     }
     return std::filesystem::current_path().string();
 #endif

@@ -58,28 +58,33 @@ jobs:
           #!/bin/bash
           set -e
           cd "$(dirname "$0")"
-          VDJ="$HOME/Library/Application Support/VirtualDJ"
 
-          # Install to both folders: PluginsMacArm (Apple Silicon native VDJ)
-          # and Plugins64 (Intel / Rosetta VDJ)
-          for SUB in PluginsMacArm Plugins64; do
-              PLUGDIR="$VDJ/$SUB/OnlineSources"
-              mkdir -p "$PLUGDIR/youtube-source/ui"
-              rm -rf "$PLUGDIR/YouTubeSource.bundle"
-              cp -R YouTubeSource.bundle "$PLUGDIR/"
-              cp -R youtube-source/ui/* "$PLUGDIR/youtube-source/ui/"
-              cp youtube-source/yt-dlp "$PLUGDIR/youtube-source/yt-dlp"
-              cp youtube-source/ffmpeg "$PLUGDIR/youtube-source/ffmpeg"
-              chmod +x "$PLUGDIR/youtube-source/yt-dlp" "$PLUGDIR/youtube-source/ffmpeg"
-              # Remove quarantine from EVERYTHING (bundle included) or Gatekeeper
-              # silently blocks the unsigned plugin from loading
-              xattr -dr com.apple.quarantine "$PLUGDIR" 2>/dev/null || true
-              echo "Installed to $PLUGDIR"
-          done
+          # VDJ may use either of these as its home folder depending on version
+          VDJ_HOMES=(
+              "$HOME/Library/Application Support/VirtualDJ"
+              "$HOME/Documents/VirtualDJ"
+          )
 
-          # Ad-hoc sign the bundles so Apple Silicon will load them
-          for SUB in PluginsMacArm Plugins64; do
-              codesign --force --deep -s - "$VDJ/$SUB/OnlineSources/YouTubeSource.bundle" 2>/dev/null || true
+          # PluginsMacArm = Apple Silicon native VDJ (M1/M2/M3)
+          # Plugins64    = Intel / Rosetta VDJ
+          # Install to all combinations so VDJ finds it regardless
+          for VDJ_HOME in "${VDJ_HOMES[@]}"; do
+              [ -d "$VDJ_HOME" ] || continue
+              for SUB in PluginsMacArm Plugins64; do
+                  PLUGDIR="$VDJ_HOME/$SUB/OnlineSources"
+                  mkdir -p "$PLUGDIR/youtube-source/ui"
+                  rm -rf "$PLUGDIR/YouTubeSource.bundle"
+                  cp -R YouTubeSource.bundle "$PLUGDIR/"
+                  cp -R youtube-source/ui/* "$PLUGDIR/youtube-source/ui/"
+                  cp youtube-source/yt-dlp "$PLUGDIR/youtube-source/yt-dlp"
+                  cp youtube-source/ffmpeg "$PLUGDIR/youtube-source/ffmpeg"
+                  chmod +x "$PLUGDIR/youtube-source/yt-dlp" "$PLUGDIR/youtube-source/ffmpeg"
+                  # Remove quarantine from EVERYTHING - Gatekeeper silently blocks unsigned code
+                  xattr -dr com.apple.quarantine "$PLUGDIR" 2>/dev/null || true
+                  # Ad-hoc sign the bundle - required on Apple Silicon
+                  codesign --force --deep -s - "$PLUGDIR/YouTubeSource.bundle" 2>/dev/null || true
+                  echo "  Installed to $PLUGDIR"
+              done
           done
 
           echo ""

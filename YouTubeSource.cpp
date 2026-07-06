@@ -49,6 +49,12 @@ extern "C" BOOL WINAPI DllMain(HINSTANCE hinstDLL, DWORD fdwReason, LPVOID lpvRe
 #ifndef E_POINTER
 #define E_POINTER ((HRESULT)0x80004003L)
 #endif
+#ifndef SUCCEEDED
+#define SUCCEEDED(hr) (((HRESULT)(hr)) >= 0)
+#endif
+#ifndef FAILED
+#define FAILED(hr) (((HRESULT)(hr)) < 0)
+#endif
 #endif
 
 // Open a URL in the default browser (cross-platform)

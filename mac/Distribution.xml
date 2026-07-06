@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<installer-gui-script minSpecVersion="2">
+    <title>YouTube Source for VirtualDJ</title>
+    <version>3.0.0.0</version>
+    <options customize="never" require-scripts="true" rootVolumeOnly="true"/>
+    <license file="resources/license.rtf"/>
+    <welcome file="resources/welcome.html"/>
+    <conclusion file="resources/conclusion.html"/>
+    <pkg-ref id="com.youtube-source.vdj.plugin" version="3.0.0.0" onConclusion="none">YouTubeSource_Component.pkg</pkg-ref>
+    <choices-outline>
+        <line choice="default">
+            <line choice="com.youtube-source.vdj.plugin"/>
+        </line>
+    </choices-outline>
+    <choice id="default"/>
+    <choice id="com.youtube-source.vdj.plugin" visible="false">
+        <pkg-ref id="com.youtube-source.vdj.plugin"/>
+    </choice>
+</installer-gui-script>

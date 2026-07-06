@@ -1,0 +1,48 @@
+name: Build macOS .pkg Installer
+
+on:
+  push:
+    tags:
+      - 'v*'
+    branches:
+      - main
+  workflow_dispatch:
+
+jobs:
+  build-pkg:
+    runs-on: macos-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install CMake
+        run: brew install cmake
+
+      - name: Install ffmpeg
+        run: brew install ffmpeg
+
+      - name: Build .pkg installer
+        working-directory: mac
+        run: |
+          chmod +x build_pkg.sh scripts/postinstall
+          ./build_pkg.sh
+
+      - name: Verify output
+        run: |
+          ls -lh mac/output/*.pkg
+          pkgutil --check-signature mac/output/*.pkg || true
+
+      - name: Upload .pkg artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: YouTubeSource-macOS-pkg
+          path: mac/output/*.pkg
+          retention-days: 30
+
+      - name: Attach to release (on tag)
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: mac/output/*.pkg
+          draft: true

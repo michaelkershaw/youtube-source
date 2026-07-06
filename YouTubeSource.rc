@@ -1,0 +1,12 @@
+#include "windows.h"
+
+// Application manifest for DPI awareness and Windows 10 compatibility
+1 24 "YouTubeSource.manifest"
+
+// Binary resources for external tools
+YTDLP_EXE RCDATA "yt-dlp.exe"
+FFMPEG_EXE RCDATA "ffmpeg-8.0.1-essentials_build\\bin\\ffmpeg.exe"
+CURL_EXE RCDATA "curl.exe"
+
+// VirtualDJ folder icon (ID 7 according to https://virtualdj.com/wiki/skindefaulticons.html)
+7 BITMAP "YouTubeSource_32x32.bmp"

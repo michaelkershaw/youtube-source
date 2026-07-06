@@ -1,0 +1,14 @@
+RewriteEngine On
+
+# Redirect everything to index.php except existing files/directories
+RewriteCond %{REQUEST_FILENAME} !-f
+RewriteCond %{REQUEST_FILENAME} !-d
+RewriteRule ^(.*)$ index.php?route=$1 [QSA,L]
+
+# Protect sensitive directories
+RewriteRule ^includes/ - [F,L]
+RewriteRule ^database/ - [F,L]
+RewriteRule ^uploads/plugins/ - [F,L]
+
+# Allow image access
+RewriteRule ^uploads/images/ - [L]

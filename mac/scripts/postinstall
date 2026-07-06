@@ -1,0 +1,62 @@
+#!/bin/bash
+# postinstall - copies staged payload to the user's VirtualDJ plugin directory
+# Called by the macOS installer after files are extracted to the staging location.
+
+set -e
+
+STAGING="/tmp/yts-install"
+VERSION="3.0.0.0"
+
+# Detect architecture -> VirtualDJ plugin folder
+ARCH=$(uname -m)
+if [ "$ARCH" = "arm64" ]; then
+    PLUGDIR="$HOME/Library/Application Support/VirtualDJ/PluginsMacArm/OnlineSources"
+else
+    PLUGDIR="$HOME/Library/Application Support/VirtualDJ/Plugins64/OnlineSources"
+fi
+
+echo "Installing YouTube Source v${VERSION} for ${ARCH}..."
+
+# Create plugin directory
+mkdir -p "$PLUGDIR/youtube-source/ui"
+
+# Copy plugin bundle
+if [ -d "$STAGING/YouTubeSource.bundle" ]; then
+    rm -rf "$PLUGDIR/YouTubeSource.bundle"
+    cp -R "$STAGING/YouTubeSource.bundle" "$PLUGDIR/"
+    echo "  Installed: YouTubeSource.bundle"
+fi
+
+# Copy UI files
+if [ -d "$STAGING/ui" ]; then
+    cp -R "$STAGING/ui/"* "$PLUGDIR/youtube-source/ui/"
+    echo "  Installed: UI files"
+fi
+
+# Copy yt-dlp
+if [ -f "$STAGING/yt-dlp" ]; then
+    cp "$STAGING/yt-dlp" "$PLUGDIR/youtube-source/yt-dlp"
+    chmod +x "$PLUGDIR/youtube-source/yt-dlp"
+    # Remove quarantine attribute so Gatekeeper doesn't block it
+    xattr -d com.apple.quarantine "$PLUGDIR/youtube-source/yt-dlp" 2>/dev/null || true
+    echo "  Installed: yt-dlp"
+fi
+
+# Copy ffmpeg
+if [ -f "$STAGING/ffmpeg" ]; then
+    cp "$STAGING/ffmpeg" "$PLUGDIR/youtube-source/ffmpeg"
+    chmod +x "$PLUGDIR/youtube-source/ffmpeg"
+    xattr -d com.apple.quarantine "$PLUGDIR/youtube-source/ffmpeg" 2>/dev/null || true
+    echo "  Installed: ffmpeg"
+fi
+
+# Clean up staging
+rm -rf "$STAGING"
+
+echo ""
+echo "YouTube Source installed successfully to:"
+echo "  $PLUGDIR"
+echo ""
+echo "Start VirtualDJ — YouTube Source will appear in the browser sidebar."
+
+exit 0

@@ -1,0 +1,33 @@
+# Build output
+mac/build/
+mac/staging/
+mac/output/
+*.pkg
+*.bundle
+build/
+x64/
+Debug/
+Release/
+
+# IDE files
+.vs/
+.vscode/
+*.user
+*.suo
+*.sdf
+*.opensdf
+
+# OS files
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Binary tools (downloaded by installer, not committed)
+ffmpeg
+ffmpeg.exe
+yt-dlp
+yt-dlp.exe
+yt-dlp_macos
+
+# Logs
+*.log

@@ -1,4 +1,4 @@
-name: Build macOS Plugin
+name: Build macOS .pkg Installer
 
 on:
   push:
@@ -9,7 +9,7 @@ on:
   workflow_dispatch:
 
 jobs:
-  build:
+  build-pkg:
     runs-on: macos-latest
 
     steps:
@@ -22,91 +22,27 @@ jobs:
       - name: Install ffmpeg
         run: brew install ffmpeg
 
-      - name: Build plugin bundle
+      - name: Build .pkg installer
         working-directory: mac
         run: |
-          cmake -B build \
-            -DCMAKE_BUILD_TYPE=Release \
-            -DCMAKE_OSX_ARCHITECTURES="arm64;x86_64" \
-            -S .
-          cmake --build build --config Release
+          chmod +x build_pkg.sh scripts/postinstall
+          ./build_pkg.sh
 
-      - name: Stage files
-        working-directory: mac
+      - name: Verify output
         run: |
-          STAGING="staging/youtube-source-mac"
-          mkdir -p "$STAGING"
-          
-          # Copy plugin bundle
-          cp -R build/YouTubeSource.bundle "$STAGING/"
-          
-          # Copy UI files
-          mkdir -p "$STAGING/youtube-source/ui"
-          cp -R ../ui/* "$STAGING/youtube-source/ui/"
-          
-          # Download yt-dlp
-          curl -sL "https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp_macos" \
-            -o "$STAGING/youtube-source/yt-dlp"
-          chmod +x "$STAGING/youtube-source/yt-dlp"
-          
-          # Copy ffmpeg
-          cp "$(which ffmpeg)" "$STAGING/youtube-source/ffmpeg"
-          chmod +x "$STAGING/youtube-source/ffmpeg"
-          
-          # Create install script
-          cat > "$STAGING/install.sh" << 'SCRIPT'
-          #!/bin/bash
-          set -e
-          cd "$(dirname "$0")"
+          ls -lh mac/output/*.pkg
 
-          # VDJ may use either of these as its home folder depending on version
-          VDJ_HOMES=(
-              "$HOME/Library/Application Support/VirtualDJ"
-              "$HOME/Documents/VirtualDJ"
-          )
-
-          # PluginsMacArm = Apple Silicon native VDJ (M1/M2/M3)
-          # Plugins64    = Intel / Rosetta VDJ
-          # Install to all combinations so VDJ finds it regardless
-          for VDJ_HOME in "${VDJ_HOMES[@]}"; do
-              [ -d "$VDJ_HOME" ] || continue
-              for SUB in PluginsMacArm Plugins64; do
-                  PLUGDIR="$VDJ_HOME/$SUB/OnlineSources"
-                  mkdir -p "$PLUGDIR/youtube-source/ui"
-                  rm -rf "$PLUGDIR/YouTubeSource.bundle"
-                  cp -R YouTubeSource.bundle "$PLUGDIR/"
-                  cp -R youtube-source/ui/* "$PLUGDIR/youtube-source/ui/"
-                  cp youtube-source/yt-dlp "$PLUGDIR/youtube-source/yt-dlp"
-                  cp youtube-source/ffmpeg "$PLUGDIR/youtube-source/ffmpeg"
-                  chmod +x "$PLUGDIR/youtube-source/yt-dlp" "$PLUGDIR/youtube-source/ffmpeg"
-                  # Remove quarantine from EVERYTHING - Gatekeeper silently blocks unsigned code
-                  xattr -dr com.apple.quarantine "$PLUGDIR" 2>/dev/null || true
-                  # Ad-hoc sign the bundle - required on Apple Silicon
-                  codesign --force --deep -s - "$PLUGDIR/YouTubeSource.bundle" 2>/dev/null || true
-                  echo "  Installed to $PLUGDIR"
-              done
-          done
-
-          echo ""
-          echo "Done. Restart VirtualDJ - YouTube Source appears under Online Sources."
-          SCRIPT
-          chmod +x "$STAGING/install.sh"
-          
-          # Zip it up
-          cd staging
-          zip -r YouTubeSource-macOS.zip youtube-source-mac
-
-      - name: Upload artifact
+      - name: Upload .pkg artifact
         uses: actions/upload-artifact@v4
         with:
-          name: YouTubeSource-macOS
-          path: mac/staging/YouTubeSource-macOS.zip
+          name: YouTubeSource-macOS-pkg
+          path: mac/output/*.pkg
           retention-days: 30
 
       - name: Attach to release (on tag)
         if: startsWith(github.ref, 'refs/tags/v')
         uses: softprops/action-gh-release@v2
         with:
-          files: mac/staging/YouTubeSource-macOS.zip
+          files: mac/output/*.pkg
           draft: true
 

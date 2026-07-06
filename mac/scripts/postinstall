@@ -7,51 +7,61 @@ set -e
 STAGING="/tmp/yts-install"
 VERSION="3.0.0.0"
 
-# VirtualDJ plugins live in the user's Documents folder
-PLUGDIR="$HOME/Documents/VirtualDJ/Plugins64/OnlineSources"
+# VDJ may use either of these as its home folder depending on version
+VDJ_HOMES=(
+    "$HOME/Documents/VirtualDJ"
+    "$HOME/Library/Application Support/VirtualDJ"
+)
 
+# PluginsMacArm = Apple Silicon native VDJ (M1/M2/M3)
+# Plugins64    = Intel / Rosetta VDJ
 echo "Installing YouTube Source v${VERSION}..."
 
-# Create plugin directory
-mkdir -p "$PLUGDIR/youtube-source/ui"
+for VDJ_HOME in "${VDJ_HOMES[@]}"; do
+    [ -d "$VDJ_HOME" ] || continue
+    for SUB in PluginsMacArm Plugins64; do
+        PLUGDIR="$VDJ_HOME/$SUB/OnlineSources"
+        mkdir -p "$PLUGDIR/youtube-source/ui"
 
-# Copy plugin bundle
-if [ -d "$STAGING/YouTubeSource.bundle" ]; then
-    rm -rf "$PLUGDIR/YouTubeSource.bundle"
-    cp -R "$STAGING/YouTubeSource.bundle" "$PLUGDIR/"
-    echo "  Installed: YouTubeSource.bundle"
-fi
+        # Copy plugin bundle
+        if [ -d "$STAGING/YouTubeSource.bundle" ]; then
+            rm -rf "$PLUGDIR/YouTubeSource.bundle"
+            cp -R "$STAGING/YouTubeSource.bundle" "$PLUGDIR/"
+        fi
 
-# Copy UI files
-if [ -d "$STAGING/ui" ]; then
-    cp -R "$STAGING/ui/"* "$PLUGDIR/youtube-source/ui/"
-    echo "  Installed: UI files"
-fi
+        # Copy UI files
+        if [ -d "$STAGING/ui" ]; then
+            cp -R "$STAGING/ui/"* "$PLUGDIR/youtube-source/ui/"
+        fi
 
-# Copy yt-dlp
-if [ -f "$STAGING/yt-dlp" ]; then
-    cp "$STAGING/yt-dlp" "$PLUGDIR/youtube-source/yt-dlp"
-    chmod +x "$PLUGDIR/youtube-source/yt-dlp"
-    # Remove quarantine attribute so Gatekeeper doesn't block it
-    xattr -d com.apple.quarantine "$PLUGDIR/youtube-source/yt-dlp" 2>/dev/null || true
-    echo "  Installed: yt-dlp"
-fi
+        # Copy yt-dlp
+        if [ -f "$STAGING/yt-dlp" ]; then
+            cp "$STAGING/yt-dlp" "$PLUGDIR/youtube-source/yt-dlp"
+            chmod +x "$PLUGDIR/youtube-source/yt-dlp"
+        fi
 
-# Copy ffmpeg
-if [ -f "$STAGING/ffmpeg" ]; then
-    cp "$STAGING/ffmpeg" "$PLUGDIR/youtube-source/ffmpeg"
-    chmod +x "$PLUGDIR/youtube-source/ffmpeg"
-    xattr -d com.apple.quarantine "$PLUGDIR/youtube-source/ffmpeg" 2>/dev/null || true
-    echo "  Installed: ffmpeg"
-fi
+        # Copy ffmpeg
+        if [ -f "$STAGING/ffmpeg" ]; then
+            cp "$STAGING/ffmpeg" "$PLUGDIR/youtube-source/ffmpeg"
+            chmod +x "$PLUGDIR/youtube-source/ffmpeg"
+        fi
+
+        # Remove quarantine from EVERYTHING - Gatekeeper silently blocks unsigned code
+        xattr -dr com.apple.quarantine "$PLUGDIR" 2>/dev/null || true
+
+        # Ad-hoc sign the bundle - required on Apple Silicon
+        codesign --force --deep -s - "$PLUGDIR/YouTubeSource.bundle" 2>/dev/null || true
+
+        echo "  Installed to $PLUGDIR"
+    done
+done
 
 # Clean up staging
 rm -rf "$STAGING"
 
 echo ""
-echo "YouTube Source installed successfully to:"
-echo "  $PLUGDIR"
+echo "YouTube Source installed successfully."
+echo "Restart VirtualDJ - YouTube Source appears under Online Sources."
 echo ""
-echo "Start VirtualDJ — YouTube Source will appear in the browser sidebar."
 
 exit 0

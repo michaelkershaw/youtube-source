@@ -7,15 +7,10 @@ set -e
 STAGING="/tmp/yts-install"
 VERSION="3.0.0.0"
 
-# Detect architecture -> VirtualDJ plugin folder
-ARCH=$(uname -m)
-if [ "$ARCH" = "arm64" ]; then
-    PLUGDIR="$HOME/Library/Application Support/VirtualDJ/PluginsMacArm/OnlineSources"
-else
-    PLUGDIR="$HOME/Library/Application Support/VirtualDJ/Plugins64/OnlineSources"
-fi
+# VirtualDJ plugins live in the user's Documents folder
+PLUGDIR="$HOME/Documents/VirtualDJ/Plugins64/OnlineSources"
 
-echo "Installing YouTube Source v${VERSION} for ${ARCH}..."
+echo "Installing YouTube Source v${VERSION}..."
 
 # Create plugin directory
 mkdir -p "$PLUGDIR/youtube-source/ui"

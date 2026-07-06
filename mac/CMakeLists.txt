@@ -8,8 +8,7 @@
 #   cmake --build build
 #
 # Output: build/YouTubeSource.bundle
-# Install to: ~/Library/Application Support/VirtualDJ/PluginsMacArm/OnlineSources/  (Apple Silicon)
-#         or: ~/Library/Application Support/VirtualDJ/Plugins64/OnlineSources/     (Intel)
+# Install to: ~/Documents/VirtualDJ/Plugins64/OnlineSources/
 
 cmake_minimum_required(VERSION 3.20)
 project(YouTubeSource LANGUAGES CXX OBJCXX)

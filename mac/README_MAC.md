@@ -44,9 +44,8 @@ The installer (`build_pkg.sh`) performs these steps:
 3. **pkgbuild** creates a component package with a `postinstall` script
 4. **productbuild** wraps it with a polished installer UI (welcome, license, conclusion)
 
-The `postinstall` script detects the Mac's architecture and copies files to:
-- **Apple Silicon:** `~/Library/Application Support/VirtualDJ/PluginsMacArm/OnlineSources/`
-- **Intel:** `~/Library/Application Support/VirtualDJ/Plugins64/OnlineSources/`
+The `postinstall` script copies files to:
+- `~/Documents/VirtualDJ/Plugins64/OnlineSources/`
 
 ### Installer Files
 
@@ -76,15 +75,13 @@ chmod +x install_mac.sh
 ## Folder Layout After Install
 
 ```
-~/Library/Application Support/VirtualDJ/PluginsMacArm/OnlineSources/   (Apple Silicon)
+~/Documents/VirtualDJ/Plugins64/OnlineSources/
 ├── YouTubeSource.bundle
 └── youtube-source/
     ├── ui/            (index.html, app.js, styles.css)
     ├── yt-dlp         (macOS binary)
     └── ffmpeg         (macOS binary)
 ```
-
-Intel Macs use `Plugins64` instead of `PluginsMacArm`.
 
 ## Distribution (Signing & Notarization)
 

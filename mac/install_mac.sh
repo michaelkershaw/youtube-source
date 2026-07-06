@@ -8,12 +8,8 @@ echo "========================================"
 echo " YouTube Source Plugin - macOS Install"
 echo "========================================"
 
-# Detect architecture -> VirtualDJ plugin folder
-if [[ "$(uname -m)" == "arm64" ]]; then
-    PLUGDIR="$HOME/Library/Application Support/VirtualDJ/PluginsMacArm/OnlineSources"
-else
-    PLUGDIR="$HOME/Library/Application Support/VirtualDJ/Plugins64/OnlineSources"
-fi
+# VirtualDJ plugins live in the user's Documents folder
+PLUGDIR="$HOME/Documents/VirtualDJ/Plugins64/OnlineSources"
 
 BUNDLE="build/YouTubeSource.bundle"
 if [ ! -d "$BUNDLE" ]; then

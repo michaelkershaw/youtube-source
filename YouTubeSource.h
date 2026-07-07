@@ -204,6 +204,7 @@ private:
     std::string AuthToken = "";
     std::string SavedPassword;  // Encrypted password for convenience
     bool SavePasswordEnabled = false;  // User preference to save password
+    bool AutoLoginEnabled = false;     // Auto-login on startup
     int MaxActivations = 0;             // Device activation limit (renamed from MaxDevices)
     int CurrentActivations = 0;         // Current device count (renamed from DeviceCount)
     
@@ -216,10 +217,15 @@ private:
     int CurrentSubLicenses = 0;         // Current active sub-licenses
     bool LoginToMarketplace(const std::string& email, const std::string& password);
     bool LoginToMarketplace(const std::string& email, const std::string& password, bool savePassword);
+    bool LoginToMarketplace(const std::string& email, const std::string& password, bool savePassword, bool autoLogin);
     void LogoutFromMarketplace();
     void OpenMarketplaceDashboard();
     std::string EncryptPassword(const std::string& plain);
     std::string DecryptPassword(const std::string& encrypted);
+    void SaveCredentials();
+    void LoadCredentials();
+    std::string Base64Encode(const std::string& data);
+    std::string Base64Decode(const std::string& encoded);
 
     // Online license validation
     std::string LicenseServerURL = "https://djeventsuite.cloud";  // License validation server (marketplace)

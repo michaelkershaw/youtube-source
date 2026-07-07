@@ -149,6 +149,20 @@ HRESULT VDJ_API CYouTubeSource::OnLoad()
         LogWarning("Plugin is not licensed - some features will be disabled");
     }
     
+    // Load saved credentials (separate from license.dat so validation can't clobber them)
+    LoadCredentials();
+    
+    // Auto-login if credentials are saved and auto-login is enabled
+    if (AutoLoginEnabled && SavePasswordEnabled && !AccountEmail.empty() && !SavedPassword.empty()) {
+        LogInfo("Auto-login enabled - attempting login for: " + AccountEmail);
+        std::string email = AccountEmail;
+        std::string pwd = DecryptPassword(SavedPassword);
+        std::thread([this, email, pwd]() {
+            bool ok = LoginToMarketplace(email, pwd, true, true);
+            LogInfo("Auto-login " + std::string(ok ? "SUCCESS" : "FAILED") + " for: " + email);
+        }).detach();
+    }
+    
 #ifdef _WIN32
     // Initialize GDI+ for PNG loading
     Gdiplus::GdiplusStartupInput gdiplusInput;
@@ -772,7 +786,11 @@ void CYouTubeSource::PushLicenseToWeb()
         {"statusText", LicenseMessage},
         {"account", AccountEmail},
         {"accountName", AccountName},
-        {"loggedIn", IsLoggedIn}
+        {"loggedIn", IsLoggedIn},
+        {"savedEmail", AccountEmail},
+        {"savedPassword", SavePasswordEnabled ? DecryptPassword(SavedPassword) : ""},
+        {"savePassword", SavePasswordEnabled},
+        {"autoLogin", AutoLoginEnabled}
     };
     if (daysRemaining >= 0) payload["daysRemaining"] = daysRemaining;
     if (MaxActivations > 0)
@@ -966,8 +984,9 @@ void CYouTubeSource::HandleWebMessage(const std::string& type, const std::string
         std::string email = p.value("email", "");
         std::string password = p.value("password", "");
         bool save = p.value("savePassword", false);
-        std::thread([this, email, password, save, pushToast]() {
-            bool ok = LoginToMarketplace(email, password, save);
+        bool autoLogin = p.value("autoLogin", false);
+        std::thread([this, email, password, save, autoLogin, pushToast]() {
+            bool ok = LoginToMarketplace(email, password, save, autoLogin);
             PushLicenseToWeb();
             pushToast(ok ? "Logged in" : "Login failed", ok ? "ok" : "err");
         }).detach();
@@ -2485,7 +2504,7 @@ bool CYouTubeSource::ActivateLicenseOnline(const std::string& key)
 //////////////////////////////////////////////////////////////////////////
 // Marketplace account integration
 
-bool CYouTubeSource::LoginToMarketplace(const std::string& email, const std::string& password, bool savePassword)
+bool CYouTubeSource::LoginToMarketplace(const std::string& email, const std::string& password, bool savePassword, bool autoLogin)
 {
     if (LicenseServerURL.empty()) {
         LogWarning("No license server URL configured");
@@ -2574,13 +2593,16 @@ bool CYouTubeSource::LoginToMarketplace(const std::string& email, const std::str
         
         // Save password preference and encrypt password if requested
         SavePasswordEnabled = savePassword;
+        AutoLoginEnabled = autoLogin;
         if (savePassword) {
             SavedPassword = EncryptPassword(password);
         } else {
             SavedPassword = "";
+            AutoLoginEnabled = false;
         }
         
         SaveLicense();
+        SaveCredentials();
         
         // Notify all listeners (search dialog, etc.) that license status changed
         UpdateLicenseStatus(true);
@@ -2593,9 +2615,14 @@ bool CYouTubeSource::LoginToMarketplace(const std::string& email, const std::str
     return false;
 }
 
+bool CYouTubeSource::LoginToMarketplace(const std::string& email, const std::string& password, bool savePassword)
+{
+    return LoginToMarketplace(email, password, savePassword, false);
+}
+
 bool CYouTubeSource::LoginToMarketplace(const std::string& email, const std::string& password)
 {
-    return LoginToMarketplace(email, password, SavePasswordEnabled);
+    return LoginToMarketplace(email, password, SavePasswordEnabled, AutoLoginEnabled);
 }
 
 void CYouTubeSource::LogoutFromMarketplace()
@@ -2611,7 +2638,13 @@ void CYouTubeSource::LogoutFromMarketplace()
     CurrentActivations = 0;
     MaxActivations = 0;
     
+    // Clear saved credentials
+    SavedPassword = "";
+    SavePasswordEnabled = false;
+    AutoLoginEnabled = false;
+    
     SaveLicense();
+    SaveCredentials();
     
     // Notify all listeners (search dialog, etc.) that license status changed
     UpdateLicenseStatus(false);
@@ -2953,15 +2986,22 @@ std::string CYouTubeSource::DecryptPassword(const std::string& encrypted)
 {
     if (encrypted.empty()) return "";
     
-    // Simple XOR decryption - same as encryption
-    std::string decrypted;
-    const char key[] = "YouTubeSource2024";
-    int keyLen = strlen(key);
-    
-    for (size_t i = 0; i < encrypted.length(); i++) {
-        decrypted += encrypted[i] ^ key[i % keyLen];
+    // Convert from hex
+    std::string binary;
+    for (size_t i = 0; i < encrypted.length(); i += 2) {
+        std::string byteStr = encrypted.substr(i, 2);
+        char byte = (char)strtol(byteStr.c_str(), nullptr, 16);
+        binary += byte;
     }
     
+    // XOR decrypt with machine ID as key (machine-bound)
+    std::string key = MachineID;
+    if (key.empty()) key = "YouTubeSource2024";
+    
+    std::string decrypted;
+    for (size_t i = 0; i < binary.length(); i++) {
+        decrypted += (char)(binary[i] ^ key[i % key.length()]);
+    }
     return decrypted;
 }
 
@@ -2969,24 +3009,127 @@ std::string CYouTubeSource::EncryptPassword(const std::string& plain)
 {
     if (plain.empty()) return "";
     
-    // Simple XOR encryption
-    std::string encrypted;
-    const char key[] = "YouTubeSource2024";
-    int keyLen = strlen(key);
+    // XOR encrypt with machine ID as key (machine-bound)
+    std::string key = MachineID;
+    if (key.empty()) key = "YouTubeSource2024";
     
+    std::string encrypted;
     for (size_t i = 0; i < plain.length(); i++) {
-        encrypted += plain[i] ^ key[i % keyLen];
+        encrypted += (char)(plain[i] ^ key[i % key.length()]);
     }
     
-    // Convert to hex for storage
+    // Convert to hex for safe storage
     std::string hex;
     char buf[3];
-    for (char c : encrypted) {
-        sprintf_s(buf, "%02X", (unsigned char)c);
+    for (unsigned char c : encrypted) {
+        sprintf_s(buf, "%02X", c);
         hex += buf;
     }
-    
     return hex;
+}
+
+// ---- Base64 helpers ----
+
+static const char b64Table[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+
+std::string CYouTubeSource::Base64Encode(const std::string& data)
+{
+    std::string out;
+    int val = 0, valb = -6;
+    for (unsigned char c : data) {
+        val = (val << 8) + c;
+        valb += 8;
+        if (valb >= 0) {
+            out.push_back(b64Table[(val >> valb) & 0x3F]);
+            valb -= 6;
+        }
+    }
+    if (valb > -6) out.push_back(b64Table[((val << 8) >> (valb + 8)) & 0x3F]);
+    while (out.size() % 4) out.push_back('=');
+    return out;
+}
+
+std::string CYouTubeSource::Base64Decode(const std::string& encoded)
+{
+    int rev[256];
+    for (int i = 0; i < 256; i++) rev[i] = -1;
+    for (int i = 0; i < 64; i++) rev[(int)b64Table[i]] = i;
+
+    std::string out;
+    int val = 0, valb = -8;
+    for (unsigned char c : encoded) {
+        if (rev[c] == -1) break;
+        val = (val << 6) + rev[c];
+        valb += 6;
+        if (valb >= 0) {
+            out.push_back((char)((val >> valb) & 0xFF));
+            valb -= 8;
+        }
+    }
+    return out;
+}
+
+// ---- Credentials storage (separate from license.dat) ----
+
+void CYouTubeSource::SaveCredentials()
+{
+    // Store in a separate file so license validation can never clobber credentials
+    std::string credFile = GlobalCacheDir + "/ytsc.dat";
+
+    // Build plain text: email, encrypted password, flags
+    std::ostringstream ss;
+    ss << AccountEmail << "\n";
+    ss << SavedPassword << "\n";  // already encrypted (hex)
+    ss << (SavePasswordEnabled ? "1" : "0") << "\n";
+    ss << (AutoLoginEnabled ? "1" : "0") << "\n";
+
+    // Base64 encode the whole thing for obfuscation
+    std::string encoded = Base64Encode(ss.str());
+
+    std::ofstream file(credFile);
+    if (file.is_open()) {
+        file << encoded;
+        file.close();
+        LogInfo("Credentials saved to: " + credFile);
+    } else {
+        LogError("Failed to save credentials to: " + credFile);
+    }
+}
+
+void CYouTubeSource::LoadCredentials()
+{
+    std::string credFile = GlobalCacheDir + "/ytsc.dat";
+    std::ifstream file(credFile);
+    if (!file.is_open()) {
+        LogInfo("No credentials file found at: " + credFile);
+        return;
+    }
+
+    std::string encoded((std::istreambuf_iterator<char>(file)),
+                         std::istreambuf_iterator<char>());
+    file.close();
+
+    if (encoded.empty()) {
+        LogInfo("Credentials file is empty");
+        return;
+    }
+
+    // Base64 decode
+    std::string plain = Base64Decode(encoded);
+    if (plain.empty()) {
+        LogWarning("Failed to decode credentials file");
+        return;
+    }
+
+    // Parse lines
+    std::istringstream ss(plain);
+    std::string savePwdStr, autoLoginStr;
+    std::getline(ss, AccountEmail);
+    std::getline(ss, SavedPassword);  // encrypted (hex)
+    if (std::getline(ss, savePwdStr)) SavePasswordEnabled = (savePwdStr == "1");
+    if (std::getline(ss, autoLoginStr)) AutoLoginEnabled = (autoLoginStr == "1");
+
+    LogInfo("Credentials loaded: email=" + AccountEmail + " savePwd=" + (SavePasswordEnabled ? "yes" : "no") + " autoLogin=" + (AutoLoginEnabled ? "yes" : "no"));
 }
 
 //////////////////////////////////////////////////////////////////////////

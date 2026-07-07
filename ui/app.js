@@ -406,10 +406,18 @@ function renderLicense() {
         <button class="btn small" id="lic-logout">LOG OUT</button>
       </div>
       ` : `
-      <div class="lic-field"><input type="email" id="lic-email" placeholder="Email" style="font-family:inherit" value="${esc(lic.account || '')}"></div>
+      <div class="lic-field"><input type="email" id="lic-email" placeholder="Email" style="font-family:inherit" value="${esc(lic.savedEmail || lic.account || '')}"></div>
       <div class="lic-field">
-        <input type="password" id="lic-pass" placeholder="Password" style="font-family:inherit">
+        <input type="password" id="lic-pass" placeholder="Password" style="font-family:inherit" value="${esc(lic.savedPassword || '')}">
         <button class="btn primary" id="lic-login">LOG IN</button>
+      </div>
+      <div style="margin-top:10px; display:flex; gap:16px; align-items:center">
+        <label style="display:flex; align-items:center; gap:6px; cursor:pointer; font-size:13px; color:#aaa">
+          <input type="checkbox" id="lic-save-pwd" ${lic.savePassword ? 'checked' : ''}> Remember password
+        </label>
+        <label style="display:flex; align-items:center; gap:6px; cursor:pointer; font-size:13px; color:#aaa">
+          <input type="checkbox" id="lic-auto-login" ${lic.autoLogin ? 'checked' : ''}> Auto login
+        </label>
       </div>
       <div style="margin-top:12px; display:flex; gap:10px">
         <button class="btn small" id="lic-dashboard">OPEN DASHBOARD</button>
@@ -425,8 +433,10 @@ function renderLicense() {
       const email = $('#lic-email').value.trim();
       const password = $('#lic-pass').value;
       if (!email || !password) return;
+      const savePassword = $('#lic-save-pwd') ? $('#lic-save-pwd').checked : false;
+      const autoLogin = $('#lic-auto-login') ? $('#lic-auto-login').checked : false;
       setStatus('Logging in...');
-      bridge.send('license.login', { email, password, savePassword: true });
+      bridge.send('license.login', { email, password, savePassword, autoLogin });
     };
     loginBtn.onclick = submitLogin;
     $('#lic-pass').addEventListener('keydown', e => { if (e.key === 'Enter') submitLogin(); });

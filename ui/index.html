@@ -30,6 +30,7 @@
     <button class="tab" data-view="charts">Charts</button>
     <button class="tab" data-view="history">Downloads</button>
     <button class="tab" data-view="license">License</button>
+    <button class="tab" data-view="settings">Settings</button>
   </div>
 
   <!-- Toolbar (search view) -->
@@ -40,6 +41,10 @@
       <div id="search-dropdown"></div>
     </div>
     <button class="btn primary" id="btn-search">SEARCH</button>
+    <span id="duration-badge" style="display:none; font-size:11px; color:#f90;
+      background:rgba(255,153,0,0.12); border:1px solid rgba(255,153,0,0.35);
+      border-radius:10px; padding:3px 8px; white-space:nowrap; cursor:pointer"
+      title="Duration filter active - click to change in Settings"></span>
     <div class="format-toggle">
       <button id="fmt-mp3" class="active mp3">MP3</button>
       <button id="fmt-mp4">MP4</button>

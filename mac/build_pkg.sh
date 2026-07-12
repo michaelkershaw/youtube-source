@@ -21,8 +21,20 @@
 
 set -e
 
+# --- Auto-increment build version ---
+SCRIPT_DIR_TMP="$(cd "$(dirname "$0")" && pwd)"
+SRC_DIR_TMP="$(cd "$SCRIPT_DIR_TMP/.." && pwd)"
+if [ -f "$SRC_DIR_TMP/increment_version.sh" ]; then
+    chmod +x "$SRC_DIR_TMP/increment_version.sh"
+    "$SRC_DIR_TMP/increment_version.sh"
+fi
+
 # --- Configuration ---
-VERSION="3.0.0.0"
+# Read version from PluginVersion.h (auto-incremented above)
+VERSION=$(grep '#define PLUGIN_VERSION' "$SRC_DIR_TMP/PluginVersion.h" | head -1 | sed -E 's/.*"([0-9]+\.[0-9]+\.[0-9]+\.[0-9]+)".*/\1/')
+if [ -z "$VERSION" ]; then
+    VERSION="3.0.0.0"
+fi
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 SRC_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 BUILD_DIR="$SCRIPT_DIR/build"

@@ -152,8 +152,11 @@ private:
     
     // Settings
     std::string DownloadFormat = "mp3";  // "mp3" or "mp4"
+    int MaxDurationSec = 0;    // 0 = no filter; >0 = exclude videos longer than this
+    int MinDurationSec = 0;    // 0 = no filter; >0 = exclude videos shorter than this
     void LoadSettings();
     void SaveSettings();
+    void FilterByDuration(std::vector<VideoInfo>& results);
 
     // License system
     enum LicenseStatus { 
@@ -224,6 +227,7 @@ private:
     std::string DecryptPassword(const std::string& encrypted);
     void SaveCredentials();
     void LoadCredentials();
+    void ResetLicenseData();
     std::string Base64Encode(const std::string& data);
     std::string Base64Decode(const std::string& encoded);
 

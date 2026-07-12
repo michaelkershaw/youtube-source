@@ -40,7 +40,8 @@ const state = {
   licensed: false,
   license: {},
   searching: false,
-  downloads: {}       // id -> progress
+  downloads: {},       // id -> progress
+  settings: { format: 'mp3', maxDuration: 0, minDuration: 0 }
 };
 
 const GENRES = ['all', 'pop', 'hip hop', 'edm', 'house', 'rock', 'latin', 'afrobeats', 'r&b', 'reggaeton', 'country', 'jazz'];
@@ -72,6 +73,7 @@ function switchView(view) {
   if (view === 'trending' && state.trending.length === 0) loadTrending();
   if (view === 'charts' && state.charts.length === 0) loadCharts(state.genre);
   if (view === 'history') bridge.send('getHistory');
+  if (view === 'settings') bridge.send('getSettings');
 }
 
 // ===== Search =====
@@ -158,6 +160,7 @@ function render() {
     case 'charts':    renderCharts(); break;
     case 'history':   renderHistory(); break;
     case 'license':   renderLicense(); break;
+    case 'settings':  renderSettings(); break;
   }
 }
 
@@ -365,6 +368,77 @@ function renderHistory() {
   });
 }
 
+// ===== Settings view =====
+function renderSettings() {
+  const s = state.settings || {};
+  const maxMin = s.maxDuration > 0 ? Math.round(s.maxDuration / 60) : 0;
+  const minMin = s.minDuration > 0 ? Math.round(s.minDuration / 60) : 0;
+  content.innerHTML = `
+  <div class="lic-wrap">
+    <div class="lic-card">
+      <h3>SEARCH FILTERS</h3>
+      <p style="color:#aaa; font-size:12px; margin:4px 0 16px">Filter search results by video duration. Enter 0 for no limit. Values in minutes.</p>
+      <div style="display:flex; gap:20px; align-items:center; margin-bottom:16px">
+        <label style="display:flex; flex-direction:column; gap:4px">
+          <span style="font-size:12px; color:#aaa">Min length (minutes)</span>
+          <input type="number" id="set-min-dur" min="0" value="${minMin}" style="width:120px; padding:8px; background:#1a1a1a; border:1px solid #333; border-radius:8px; color:#fff; font-family:inherit">
+        </label>
+        <label style="display:flex; flex-direction:column; gap:4px">
+          <span style="font-size:12px; color:#aaa">Max length (minutes)</span>
+          <input type="number" id="set-max-dur" min="0" value="${maxMin}" style="width:120px; padding:8px; background:#1a1a1a; border:1px solid #333; border-radius:8px; color:#fff; font-family:inherit">
+        </label>
+      </div>
+      <button class="btn primary" id="set-save-filter">SAVE FILTERS</button>
+    </div>
+    <div class="lic-card">
+      <h3>DOWNLOAD FORMAT</h3>
+      <p style="color:#aaa; font-size:12px; margin:4px 0 16px">Default format for downloading tracks.</p>
+      <div style="display:flex; gap:12px; margin-bottom:16px">
+        <label style="display:flex; align-items:center; gap:6px; cursor:pointer; font-size:14px">
+          <input type="radio" name="set-fmt" value="mp3" ${s.format === 'mp3' ? 'checked' : ''}> MP3 (audio)
+        </label>
+        <label style="display:flex; align-items:center; gap:6px; cursor:pointer; font-size:14px">
+          <input type="radio" name="set-fmt" value="mp4" ${s.format === 'mp4' ? 'checked' : ''}> MP4 (video)
+        </label>
+      </div>
+      <button class="btn primary" id="set-save-format">SAVE FORMAT</button>
+    </div>
+  </div>`;
+
+  $('#set-save-filter').onclick = () => {
+    const minVal = parseInt($('#set-min-dur').value) || 0;
+    const maxVal = parseInt($('#set-max-dur').value) || 0;
+    if (minVal < 0 || maxVal < 0) { toast('Values cannot be negative', 'err'); return; }
+    if (maxVal > 0 && minVal > 0 && minVal >= maxVal) { toast('Min must be less than max', 'err'); return; }
+    const maxDuration = maxVal * 60;
+    const minDuration = minVal * 60;
+    bridge.send('setSettings', { maxDuration, minDuration, format: state.settings.format });
+    toast('Settings saved', 'ok');
+  };
+  $('#set-save-format').onclick = () => {
+    const fmt = document.querySelector('input[name="set-fmt"]:checked');
+    const format = fmt ? fmt.value : 'mp3';
+    bridge.send('setSettings', { maxDuration: state.settings.maxDuration, minDuration: state.settings.minDuration, format });
+    toast('Format saved', 'ok');
+  };
+}
+
+function updateDurationBadge() {
+  const badge = $('#duration-badge');
+  if (!badge) return;
+  const s = state.settings || {};
+  const parts = [];
+  if (s.minDuration > 0) parts.push('Min ' + Math.round(s.minDuration / 60) + 'm');
+  if (s.maxDuration > 0) parts.push('Max ' + Math.round(s.maxDuration / 60) + 'm');
+  if (parts.length) {
+    badge.textContent = parts.join(' \u00b7 ');
+    badge.style.display = 'inline-block';
+    badge.onclick = () => switchView('settings');
+  } else {
+    badge.style.display = 'none';
+  }
+}
+
 // ===== License view =====
 function renderLicense() {
   const lic = state.license || {};
@@ -406,7 +480,7 @@ function renderLicense() {
         <button class="btn small" id="lic-logout">LOG OUT</button>
       </div>
       ` : `
-      <div class="lic-field"><input type="email" id="lic-email" placeholder="Email" style="font-family:inherit" value="${esc(lic.savedEmail || lic.account || '')}"></div>
+      <div class="lic-field"><input type="email" id="lic-email" placeholder="Email" autocomplete="email" style="font-family:inherit" value="${esc(lic.savedEmail || lic.account || '')}"><div id="email-suggestions" style="display:none; position:relative; margin-top:2px; background:#1a1a1a; border:1px solid #333; border-radius:8px; overflow:hidden; z-index:100"></div></div>
       <div class="lic-field">
         <input type="password" id="lic-pass" placeholder="Password" style="font-family:inherit" value="${esc(lic.savedPassword || '')}">
         <button class="btn primary" id="lic-login">LOG IN</button>
@@ -423,6 +497,9 @@ function renderLicense() {
         <button class="btn small" id="lic-dashboard">OPEN DASHBOARD</button>
       </div>
       `}
+      <div style="margin-top:16px; padding-top:12px; border-top:1px solid #333">
+        <button class="btn small" id="lic-reset" style="color:#e55;font-size:11px">RESET LICENSE DATA</button>
+      </div>
     </div>
   </div>`;
 
@@ -444,6 +521,44 @@ function renderLicense() {
   $('#lic-dashboard').onclick = () => bridge.send('license.openDashboard');
   const lo = $('#lic-logout');
   if (lo) lo.onclick = () => bridge.send('license.logout');
+  const resetBtn = $('#lic-reset');
+  if (resetBtn) resetBtn.onclick = () => {
+    if (confirm('This will delete all license and credential files and reset all state. Are you sure?')) {
+      bridge.send('license.reset');
+      toast('License data reset', 'ok');
+    }
+  };
+  // Email domain suggestions
+  const emailInput = $('#lic-email');
+  const emailSug = $('#email-suggestions');
+  if (emailInput && emailSug) {
+    const EMAIL_DOMAINS = [
+      '@gmail.com', '@hotmail.com', '@hotmail.co.uk', '@outlook.com',
+      '@yahoo.com', '@yahoo.co.uk', '@icloud.com', '@live.com',
+      '@aol.com', '@msn.com', '@proton.me', '@protonmail.com',
+      '@btinternet.com', '@sky.com', '@virginmedia.com'
+    ];
+    emailInput.addEventListener('input', () => {
+      const val = emailInput.value;
+      const atIdx = val.indexOf('@');
+      if (atIdx < 0 || atIdx === val.length - 1) { emailSug.style.display = 'none'; return; }
+      const typed = val.substring(atIdx).toLowerCase();
+      const matches = EMAIL_DOMAINS.filter(d => d.startsWith(typed) && d !== typed);
+      if (!matches.length) { emailSug.style.display = 'none'; return; }
+      emailSug.innerHTML = matches.map(d =>
+        `<div class="email-sug-item" data-domain="${d}" style="padding:6px 12px; cursor:pointer; font-size:13px; color:#ccc">${esc(val.substring(0, atIdx))}${esc(d)}</div>`
+      ).join('');
+      emailSug.style.display = 'block';
+      emailSug.querySelectorAll('.email-sug-item').forEach(item => {
+        item.onmousedown = e => {
+          e.preventDefault();
+          emailInput.value = val.substring(0, atIdx) + item.dataset.domain;
+          emailSug.style.display = 'none';
+        };
+      });
+    });
+    emailInput.addEventListener('blur', () => setTimeout(() => { if (emailSug) emailSug.style.display = 'none'; }, 150));
+  }
 }
 
 // ===== Status / progress / toasts =====
@@ -477,6 +592,19 @@ function handleHostMessage(m) {
       case 'init':
         $('#version').textContent = 'v' + (m.payload.version || '');
         setFormat(m.payload.format || 'mp3');
+        state.settings.format = m.payload.format || 'mp3';
+        state.settings.maxDuration = m.payload.maxDuration || 0;
+        state.settings.minDuration = m.payload.minDuration || 0;
+        updateDurationBadge();
+        break;
+
+      case 'settings':
+        state.settings.format = m.payload.format || 'mp3';
+        state.settings.maxDuration = m.payload.maxDuration || 0;
+        state.settings.minDuration = m.payload.minDuration || 0;
+        setFormat(state.settings.format);
+        updateDurationBadge();
+        if (state.view === 'settings') render();
         break;
 
       case 'searchResults':

@@ -349,20 +349,26 @@ HRESULT VDJ_API CYouTubeSource::OnSearch(const char* search, IVdjTracksList* tra
 std::vector<VideoInfo> CYouTubeSource::SearchYouTube(const std::string& query, int limit, std::atomic<bool>* cancel)
 {
     std::vector<VideoInfo> results;
-    
+
+    // When duration filter is active, fetch 6x more from YouTube
+    int fetchLimit = limit;
+    if (MaxDurationSec > 0 || MinDurationSec > 0) {
+        fetchLimit = limit * 6;
+    }
+
     std::vector<std::string> args = {
         "--no-warnings",
         "--flat-playlist",
         "--print", "%(.{id,title,uploader,duration,duration_string,view_count,webpage_url})j",
-        "ytsearch" + std::to_string(limit) + ":" + query
+        "ytsearch" + std::to_string(fetchLimit) + ":" + query
     };
-    
+
     auto r = Runner.RunWithRetry(args, 1, 60000, cancel);
     if (!r.ok()) {
         LogWarning("SearchYouTube: yt-dlp failed (exit=" + std::to_string(r.exitCode) +
                    (r.timedOut ? ", timeout" : "") + (r.cancelled ? ", cancelled" : "") + ")");
     }
-    
+
     for (const auto& line : r.lines) {
         VideoInfo v;
         if (YtDlpRunner::ParseVideoJsonLine(line, v)) {
@@ -370,7 +376,30 @@ std::vector<VideoInfo> CYouTubeSource::SearchYouTube(const std::string& query, i
         }
     }
     LogInfo("SearchYouTube: parsed " + std::to_string(results.size()) + " results for \"" + query + "\"");
+
+    FilterByDuration(results);
+
+    // Trim to requested limit AFTER filtering so filtered-out tracks don't count
+    if ((int)results.size() > limit) {
+        results.resize(limit);
+    }
+
     return results;
+}
+
+void CYouTubeSource::FilterByDuration(std::vector<VideoInfo>& results) {
+    if (MaxDurationSec <= 0 && MinDurationSec <= 0) return;
+    size_t before = results.size();
+    results.erase(std::remove_if(results.begin(), results.end(),
+        [this](const VideoInfo& v) {
+            if (MaxDurationSec > 0 && v.durationSec > MaxDurationSec) return true;
+            if (MinDurationSec > 0 && v.durationSec < MinDurationSec) return true;
+            return false;
+        }), results.end());
+    if (results.size() != before) {
+        LogInfo("FilterByDuration: filtered " + std::to_string(before - results.size()) +
+                " of " + std::to_string(before) + " results");
+    }
 }
 
 std::string CYouTubeSource::GetDirectStreamUrl(const std::string& videoId)
@@ -820,7 +849,9 @@ void CYouTubeSource::HandleWebMessage(const std::string& type, const std::string
     if (type == "uiReady") {
         nlohmann::json init = { {"type", "init"}, {"payload", {
             {"version", PLUGIN_VERSION},
-            {"format", DownloadFormat}
+            {"format", DownloadFormat},
+            {"maxDuration", MaxDurationSec},
+            {"minDuration", MinDurationSec}
         }} };
         pWebHost->PostJson(init.dump());
         PushLicenseToWeb();
@@ -961,6 +992,36 @@ void CYouTubeSource::HandleWebMessage(const std::string& type, const std::string
         return;
     }
     
+    if (type == "getSettings") {
+        nlohmann::json m = { {"type", "settings"}, {"payload", {
+            {"format", DownloadFormat},
+            {"maxDuration", MaxDurationSec},
+            {"minDuration", MinDurationSec}
+        }} };
+        pWebHost->PostJson(m.dump());
+        return;
+    }
+    
+    if (type == "setSettings") {
+        int maxDur = p.value("maxDuration", MaxDurationSec);
+        int minDur = p.value("minDuration", MinDurationSec);
+        std::string fmt = p.value("format", DownloadFormat);
+        if (maxDur < 0) maxDur = 0;
+        if (minDur < 0) minDur = 0;
+        MaxDurationSec = maxDur;
+        MinDurationSec = minDur;
+        if (fmt == "mp3" || fmt == "mp4") DownloadFormat = fmt;
+        SaveSettings();
+        pushToast("Settings saved", "ok");
+        nlohmann::json m = { {"type", "settings"}, {"payload", {
+            {"format", DownloadFormat},
+            {"maxDuration", MaxDurationSec},
+            {"minDuration", MinDurationSec}
+        }} };
+        pWebHost->PostJson(m.dump());
+        return;
+    }
+    
     if (type == "openUrl") {
         std::string url = p.value("url", "");
         if (url.rfind("https://", 0) == 0 || url.rfind("http://", 0) == 0)
@@ -1004,6 +1065,12 @@ void CYouTubeSource::HandleWebMessage(const std::string& type, const std::string
         return;
     }
     
+    if (type == "license.reset") {
+        ResetLicenseData();
+        PushLicenseToWeb();
+        return;
+    }
+    
     LogWarning("HandleWebMessage: unknown type: " + type);
 }
 
@@ -1026,6 +1093,7 @@ std::vector<VideoInfo> CYouTubeSource::FetchPlaylist(const std::string& url, int
         if (YtDlpRunner::ParseVideoJsonLine(line, v)) results.push_back(std::move(v));
     }
     LogInfo("FetchPlaylist: " + std::to_string(results.size()) + " tracks from " + url);
+    FilterByDuration(results);
     return results;
 }
 
@@ -1761,12 +1829,22 @@ void CYouTubeSource::LoadSettings()
                     DownloadFormat = val;
                 }
             }
+            else if (key == "max_duration") {
+                try { MaxDurationSec = std::stoi(val); } catch (...) { MaxDurationSec = 0; }
+                if (MaxDurationSec < 0) MaxDurationSec = 0;
+            }
+            else if (key == "min_duration") {
+                try { MinDurationSec = std::stoi(val); } catch (...) { MinDurationSec = 0; }
+                if (MinDurationSec < 0) MinDurationSec = 0;
+            }
             else if (key == "license_server") {
-                LicenseServerURL = val;
+                // Ignore stale license_server from old settings.ini
+                // Always use the hardcoded default URL
+                LogInfo("Ignoring stale license_server from settings.ini: " + val);
             }
         }
         file.close();
-        LogInfo("Settings loaded: format=" + DownloadFormat);
+        LogInfo("Settings loaded: format=" + DownloadFormat + " max_duration=" + std::to_string(MaxDurationSec) + " min_duration=" + std::to_string(MinDurationSec));
     } else {
         LogInfo("No settings file found, using defaults");
     }
@@ -1778,11 +1856,10 @@ void CYouTubeSource::SaveSettings()
     std::ofstream file(settingsFile);
     if (file.is_open()) {
         file << "format=" << DownloadFormat << std::endl;
-        if (!LicenseServerURL.empty()) {
-            file << "license_server=" << LicenseServerURL << std::endl;
-        }
+        file << "max_duration=" << MaxDurationSec << std::endl;
+        file << "min_duration=" << MinDurationSec << std::endl;
         file.close();
-        LogInfo("Settings saved: format=" + DownloadFormat);
+        LogInfo("Settings saved: format=" + DownloadFormat + " max_duration=" + std::to_string(MaxDurationSec) + " min_duration=" + std::to_string(MinDurationSec));
     } else {
         LogError("Failed to save settings to: " + settingsFile);
     }
@@ -3130,6 +3207,49 @@ void CYouTubeSource::LoadCredentials()
     if (std::getline(ss, autoLoginStr)) AutoLoginEnabled = (autoLoginStr == "1");
 
     LogInfo("Credentials loaded: email=" + AccountEmail + " savePwd=" + (SavePasswordEnabled ? "yes" : "no") + " autoLogin=" + (AutoLoginEnabled ? "yes" : "no"));
+}
+
+void CYouTubeSource::ResetLicenseData() {
+    // Delete license.dat
+    std::string licenseFile = GlobalCacheDir + "/license.dat";
+    if (std::filesystem::exists(licenseFile)) {
+        std::filesystem::remove(licenseFile);
+        LogInfo("ResetLicenseData: deleted " + licenseFile);
+    }
+
+    // Delete credentials file
+    std::string credFile = GlobalCacheDir + "/ytsc.dat";
+    if (std::filesystem::exists(credFile)) {
+        std::filesystem::remove(credFile);
+        LogInfo("ResetLicenseData: deleted " + credFile);
+    }
+
+    // Reset all in-memory state
+    IsLoggedIn = false;
+    IsLicensed = false;
+    LicStatus = LIC_UNCHECKED;
+    AccountEmail = "";
+    AccountName = "";
+    AuthToken = "";
+    LicenseKey = "";
+    ExpiryDate = "";
+    TokenExpiry = "";
+    LicenseType = "";
+    LicenseMessage = "";
+    PluginId = 0;
+    MaxActivations = 0;
+    CurrentActivations = 0;
+    MaxSubLicenses = 0;
+    CurrentSubLicenses = 0;
+    IsSharedLicense = false;
+    SharedOwnerName = "";
+    SharedOwnerEmail = "";
+    SharedDate = "";
+    SavedPassword = "";
+    SavePasswordEnabled = false;
+    AutoLoginEnabled = false;
+
+    LogInfo("ResetLicenseData: all license and credential state cleared");
 }
 
 //////////////////////////////////////////////////////////////////////////
